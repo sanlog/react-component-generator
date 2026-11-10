@@ -1,5 +1,7 @@
 import { stripCodeFences, ensureRenderCall } from './generator';
 import { withModelFallback } from './fallback';
+import { toUserError } from './errors';
+import { createCodeStreamProcessor, encodeLine, type CodeStreamEvent } from './stream';
 
 // 우선순위 순서. 앞 모델이 실패하면 다음 모델로 폴백한다.
 const GOOGLE_MODELS = ['gemini-3.1-flash-lite', 'gemini-3.5-flash'];
@@ -135,6 +137,101 @@ async function callGoogle(prompt: string, apiKey: string): Promise<string> {
   return withModelFallback(GOOGLE_MODELS, (model) => callGoogleModel(prompt, apiKey, model));
 }
 
+// 스트리밍 경로: 연결 단계의 실패(503, 429 등)는 throw해 기존 JSON 에러 응답으로 처리하고,
+// 본문을 읽기 시작한 뒤의 실패는 스트림 안의 error 이벤트로 전달한다.
+async function openAnthropicStream(prompt: string, apiKey: string): Promise<Response> {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 4096,
+      stream: true,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Claude API error: ${response.status}`);
+  }
+  return response;
+}
+
+async function openGoogleModelStream(prompt: string, apiKey: string, model: string): Promise<Response> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { maxOutputTokens: 8192 },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Gemini API error: ${response.status}`);
+  }
+  return response;
+}
+
+async function openGoogleStream(prompt: string, apiKey: string): Promise<Response> {
+  return withModelFallback(GOOGLE_MODELS, (model) => openGoogleModelStream(prompt, apiKey, model));
+}
+
+/** provider 스트림을 읽어 누적 코드(delta)와 최종 코드(done)를 NDJSON으로 내려준다. */
+function toCodeStream(upstream: Response, provider: Provider): Response {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const reader = upstream.body!.getReader();
+  let cancelled = false;
+
+  const body = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (events: CodeStreamEvent[]) => {
+        for (const event of events) controller.enqueue(encoder.encode(encodeLine(event)));
+      };
+      const processor = createCodeStreamProcessor(provider);
+
+      try {
+        while (!cancelled) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          send(processor.feed(decoder.decode(value, { stream: true })));
+        }
+        if (!cancelled) send(processor.finish());
+      } catch (err) {
+        // upstream 읽기 실패. 클라이언트가 이미 떠났다면 보낼 곳이 없다.
+        if (!cancelled) {
+          send([{ type: 'error', error: toUserError(err instanceof Error ? err.message : 'Unknown error').error }]);
+        }
+      } finally {
+        if (!cancelled) controller.close();
+      }
+    },
+    // 클라이언트 연결이 끊기면 upstream 호출도 중단해 토큰 소모를 막는다.
+    cancel() {
+      cancelled = true;
+      return reader.cancel();
+    },
+  });
+
+  return new Response(body, {
+    headers: { ...CORS_HEADERS, 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-cache' },
+  });
+}
+
+function errorResponse(err: unknown): Response {
+  const { status, error } = toUserError(err instanceof Error ? err.message : 'Unknown error');
+  return Response.json({ error }, { status, headers: CORS_HEADERS });
+}
+
 const server = Bun.serve({
   port: 3002,
   async fetch(req) {
@@ -156,7 +253,8 @@ const server = Bun.serve({
       );
     }
 
-    if (req.method === 'POST' && url.pathname === '/api/generate') {
+    if (req.method === 'POST' && (url.pathname === '/api/generate' || url.pathname === '/api/generate/stream')) {
+      const streaming = url.pathname === '/api/generate/stream';
       try {
         const { prompt, apiKey, provider = 'anthropic' } = (await req.json()) as {
           prompt: string;
@@ -180,6 +278,14 @@ const server = Bun.serve({
           );
         }
 
+        if (streaming) {
+          const upstream =
+            provider === 'google'
+              ? await openGoogleStream(prompt, resolvedKey)
+              : await openAnthropicStream(prompt, resolvedKey);
+          return toCodeStream(upstream, provider);
+        }
+
         const text =
           provider === 'google'
             ? await callGoogle(prompt, resolvedKey)
@@ -189,26 +295,7 @@ const server = Bun.serve({
 
         return Response.json({ code }, { headers: CORS_HEADERS });
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Unknown error';
-
-        if (message.includes('503')) {
-          return Response.json(
-            { error: 'API 서버가 일시적으로 과부하 상태입니다. 잠시 후 다시 시도해주세요.' },
-            { status: 503, headers: CORS_HEADERS }
-          );
-        }
-
-        if (message.includes('429')) {
-          return Response.json(
-            { error: '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.' },
-            { status: 429, headers: CORS_HEADERS }
-          );
-        }
-
-        return Response.json(
-          { error: message },
-          { status: 500, headers: CORS_HEADERS }
-        );
+        return errorResponse(err);
       }
     }
 

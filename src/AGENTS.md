@@ -12,6 +12,7 @@ React 19 + Vite 프론트엔드. 프롬프트를 `/api/generate`로 보내고, �
 ## Implementation Patterns
 
 - 서버 통신과 상태는 `hooks/useComponentGenerator.ts`에 모은다. 컴포넌트에서 직접 fetch하지 않는다.
+- 생성은 `/api/generate/stream`(NDJSON)을 `utils/readCodeStream.ts`로 읽는다. 생성 중 코드는 `streamingComponent`로 노출하고 완료 시 같은 id로 `components`에 확정한다. `ComponentCard`는 `isStreaming`이 true인 동안 코드 탭, 끝나면 미리보기 탭으로 전환한다.
 - 공용 타입은 `types/index.ts`에 둔다.
 - 컴포넌트와 테스트는 같은 디렉토리에 `Name.tsx`, `Name.test.tsx`로 둔다.
 
@@ -19,7 +20,7 @@ React 19 + Vite 프론트엔드. 프롬프트를 `/api/generate`로 보내고, �
 
 - `bun run test src/` 로 프론트엔드 테스트만 실행한다.
 - 테스트는 Testing Library + jsdom. `afterEach`의 `cleanup`은 `test/setup.ts`가 전역 처리하므로 테스트마다 반복하지 않는다 (`test/setup.ts:6-8`).
-- 테스트가 있는 대상은 `PromptInput`, `utils/validatePrompt.ts`, `utils/storage.ts`다. 나머지 컴포넌트와 훅은 테스트 경계 밖이므로, 로직을 추가하면 테스트를 함께 작성한다.
+- 테스트가 있는 대상은 `PromptInput`, `ComponentCard`, `useComponentGenerator`, `utils/validatePrompt.ts`, `utils/storage.ts`, `utils/ndjson.ts`, `utils/readCodeStream.ts`다. 나머지 컴포넌트와 훅은 테스트 경계 밖이므로, 로직을 추가하면 테스트를 함께 작성한다.
 - localStorage 접근 로직은 `utils/storage.ts`의 순수 함수로 두고 `storage.test.ts`로 검증한다. 훅/컴포넌트에서 `localStorage`를 직접 호출하지 않는다.
 
 ## Local Golden Rules

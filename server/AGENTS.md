@@ -12,7 +12,8 @@ Bun 런타임에서 실행되는 AI provider 프록시 서버. 프론트엔드�
 
 ## Implementation Patterns
 
-- 순수 함수는 `generator.ts`(응답 정규화), `fallback.ts`(모델 폴백)에 두고 같은 이름의 `.test.ts`를 둔다.
+- 순수 함수는 `generator.ts`(응답 정규화), `fallback.ts`(모델 폴백), `stream.ts`(SSE 파싱, 스트림 이벤트 변환), `errors.ts`(에러 메시지 -> 사용자용 메시지/상태 변환)에 두고 같은 이름의 `.test.ts`를 둔다.
+- `/api/generate/stream`은 NDJSON(`delta`/`done`/`error`)으로 응답한다. 연결 단계 실패는 JSON 에러 응답, 스트림 도중 실패는 `error` 이벤트로 전달하며 둘 다 `toUserError`를 거친다. 이벤트 변환 로직은 `createCodeStreamProcessor`에 두고 `index.ts`에는 넣지 않는다.
 - 새 Google 모델은 `GOOGLE_MODELS` 배열에 우선순위 순으로 추가한다 (`server/index.ts:5`). 폴백은 `withModelFallback`이 담당한다.
 - 새 provider 추가 시 `Provider` 타입, `ENV_KEYS`, `resolveApiKey` 경로, `/api/generate` 분기를 함께 수정한다 (`server/index.ts:57-66,183-186`).
 
