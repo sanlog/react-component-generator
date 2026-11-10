@@ -4,6 +4,13 @@ import { ComponentCard } from './components/ComponentCard';
 import { Window } from './components/Window';
 import { useComponentGenerator } from './hooks/useComponentGenerator';
 import type { Provider } from './types';
+import {
+  STORAGE_KEYS,
+  addPromptToHistory,
+  loadHistory,
+  loadProvider,
+  saveJSON,
+} from './utils/storage';
 import './App.css';
 
 const PROVIDER_CONFIG = {
@@ -14,7 +21,8 @@ const PROVIDER_CONFIG = {
 function App() {
   const [apiKey, setApiKey] = useState('');
   const [showKey, setShowKey] = useState(false);
-  const [provider, setProvider] = useState<Provider>('google');
+  const [provider, setProvider] = useState<Provider>(loadProvider);
+  const [history, setHistory] = useState<string[]>(loadHistory);
   const [envKeys, setEnvKeys] = useState<Record<Provider, boolean>>({
     anthropic: false,
     google: false,
@@ -29,6 +37,14 @@ function App() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    saveJSON(STORAGE_KEYS.provider, provider);
+  }, [provider]);
+
+  useEffect(() => {
+    saveJSON(STORAGE_KEYS.history, history);
+  }, [history]);
+
   const hasEnvKey = envKeys[provider];
 
   const handleGenerate = (prompt: string) => {
@@ -36,6 +52,7 @@ function App() {
       alert(`${PROVIDER_CONFIG[provider].label} API 키를 입력하거나 .env에 설정해주세요.`);
       return;
     }
+    setHistory((prev) => addPromptToHistory(prev, prompt));
     generate(prompt, apiKey || undefined, provider);
   };
 
@@ -68,7 +85,7 @@ function App() {
 
       <main className="workspace">
         <Window title="프롬프트" className="composer-panel">
-          <PromptInput onGenerate={handleGenerate} isLoading={isLoading} />
+          <PromptInput onGenerate={handleGenerate} isLoading={isLoading} history={history} />
         </Window>
 
         <Window title="실행 설정" className="settings-panel">
