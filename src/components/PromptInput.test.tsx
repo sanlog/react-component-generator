@@ -28,6 +28,23 @@ describe('PromptInput', () => {
   });
 });
 
+describe('PromptInput 히스토리', () => {
+  it('히스토리가 없으면 히스토리 영역을 보여주지 않는다', () => {
+    render(<PromptInput onGenerate={vi.fn()} isLoading={false} history={[]} />);
+    expect(screen.queryByText('최근 프롬프트')).not.toBeInTheDocument();
+  });
+
+  it('히스토리 항목을 클릭하면 입력창에 채워진다', async () => {
+    const user = userEvent.setup();
+    render(<PromptInput onGenerate={vi.fn()} isLoading={false} history={['요금제 카드']} />);
+
+    expect(screen.getByText('최근 프롬프트')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '요금제 카드' }));
+
+    expect(screen.getByRole('textbox')).toHaveValue('요금제 카드');
+  });
+});
+
 describe('PromptInput 길이 검증', () => {
   const longText = 'a'.repeat(501);
 
