@@ -1,0 +1,59 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  color-scheme: light;
+  font-synthesis: none;
+  -webkit-font-smoothing: none;
+  --desk: #1f7a7a;
+  --desk-deep: #175c5e;
+  --ink: #14161f;
+  --font-ui: Galmuri14, 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+  --font-code: GalmuriMono11, 'D2Coding', Consolas, monospace;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.6;
+  background-color: var(--desk);
+  /* 2px 체커 디더링: 90년대 바탕화면 질감 */
+  background-image: conic-gradient(
+    rgba(0, 0, 0, 0.07) 25%,
+    transparent 0 50%,
+    rgba(0, 0, 0, 0.07) 0 75%,
+    transparent 0
+  );
+  background-size: 4px 4px;
+  color: var(--ink);
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: var(--ink);
+  color: #f5c518;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
