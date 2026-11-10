@@ -33,6 +33,17 @@ describe('withModelFallback', () => {
     expect(attempt).toHaveBeenCalledTimes(2);
   });
 
+  it('signal이 abort되면 다음 모델로 폴백하지 않고 중단한다', async () => {
+    const controller = new AbortController();
+    const attempt = vi.fn(async (model: string) => {
+      controller.abort();
+      throw new Error(`${model} 실패`);
+    });
+
+    await expect(withModelFallback(['a', 'b'], attempt, controller.signal)).rejects.toThrow('a 실패');
+    expect(attempt).toHaveBeenCalledTimes(1);
+  });
+
   it('모델 목록이 비어 있으면 에러를 던진다', async () => {
     const attempt = vi.fn();
 

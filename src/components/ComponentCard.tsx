@@ -9,12 +9,25 @@ interface ComponentCardProps {
   onRemove: (id: string) => void;
   onRegenerate: (prompt: string) => void;
   isLoading: boolean;
+  /** true인 동안 코드가 실시간으로 채워지며, 끝나면 미리보기 탭으로 전환한다. */
+  isStreaming?: boolean;
 }
 
 type Tab = 'preview' | 'code';
 
-export function ComponentCard({ component, onRemove, onRegenerate, isLoading }: ComponentCardProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('preview');
+export function ComponentCard({
+  component,
+  onRemove,
+  onRegenerate,
+  isLoading,
+  isStreaming = false,
+}: ComponentCardProps) {
+  const [activeTab, setActiveTab] = useState<Tab>(isStreaming ? 'code' : 'preview');
+  const [wasStreaming, setWasStreaming] = useState(isStreaming);
+  if (wasStreaming !== isStreaming) {
+    setWasStreaming(isStreaming);
+    setActiveTab(isStreaming ? 'code' : 'preview');
+  }
   const [previewKey, setPreviewKey] = useState(0);
   const createdAt = component.createdAt.toLocaleTimeString('ko-KR', {
     hour: '2-digit',
@@ -52,6 +65,8 @@ export function ComponentCard({ component, onRemove, onRegenerate, isLoading }: 
           aria-selected={activeTab === 'preview'}
           className={`tab ${activeTab === 'preview' ? 'tab--active' : ''}`}
           onClick={() => setActiveTab('preview')}
+          // 생성 중에는 불완전한 코드를 매번 트랜스파일하지 않도록 미리보기를 막는다.
+          disabled={isStreaming}
         >
           미리보기
         </button>
