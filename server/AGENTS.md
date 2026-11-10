@@ -13,7 +13,9 @@ Bun 런타임에서 실행되는 AI provider 프록시 서버. 프론트엔드�
 ## Implementation Patterns
 
 - 순수 함수는 `generator.ts`(응답 정규화), `fallback.ts`(모델 폴백), `stream.ts`(SSE 파싱, 스트림 이벤트 변환), `errors.ts`(에러 메시지 -> 사용자용 메시지/상태 변환)에 두고 같은 이름의 `.test.ts`를 둔다.
-- `/api/generate/stream`은 NDJSON(`delta`/`done`/`error`)으로 응답한다. 연결 단계 실패는 JSON 에러 응답, 스트림 도중 실패는 `error` 이벤트로 전달하며 둘 다 `toUserError`를 거친다. 이벤트 변환 로직은 `createCodeStreamProcessor`에 두고 `index.ts`에는 넣지 않는다.
+- `/api/generate/stream`은 NDJSON(`delta`/`done`/`error`)으로 응답한다. 연결 단계 실패는 JSON 에러 응답, 스트림 도중 실패는 `error` 이벤트로 전달하며 둘 다 `toUserError`를 거친다. 이벤트 변환 로직은 `createCodeStreamProcessor`(이벤트 단위)와 `createCodeEventStream`(바이트 스트림, 취소 처리)에 두고 `index.ts`에는 넣지 않는다.
+- 스트리밍 경로의 upstream `fetch`에는 `req.signal`을 연결하고 `withModelFallback`에도 signal을 넘긴다. 클라이언트가 떠난 뒤 다음 모델을 호출하면 토큰이 낭비된다.
+- `toUserError`는 서버가 만든 안내 메시지와 `Claude|Gemini API error: <코드>` 형식만 원문을 노출하고 그 외 예외 메시지는 일반 문구로 바꾼다. 새 안내 메시지는 `errors.ts`의 `KNOWN_MESSAGES`에 등록한다.
 - 새 Google 모델은 `GOOGLE_MODELS` 배열에 우선순위 순으로 추가한다 (`server/index.ts:5`). 폴백은 `withModelFallback`이 담당한다.
 - 새 provider 추가 시 `Provider` 타입, `ENV_KEYS`, `resolveApiKey` 경로, `/api/generate` 분기를 함께 수정한다 (`server/index.ts:57-66,183-186`).
 

@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
+  createCodeEventStream,
   createCodeStreamProcessor,
   createSSEParser,
   extractAnthropicText,
@@ -157,6 +158,88 @@ describe('createCodeStreamProcessor (google)', () => {
     expect(processor.finish()).toEqual([
       { type: 'error', error: '응답이 중간에 끊겼습니다. 다시 시도해주세요.' },
     ]);
+  });
+});
+
+const encoder = new TextEncoder();
+
+function upstreamOf(chunks: Uint8Array[], onCancel?: () => void): ReadableStream<Uint8Array> {
+  let index = 0;
+  return new ReadableStream({
+    pull(controller) {
+      if (index < chunks.length) controller.enqueue(chunks[index++]);
+      else controller.close();
+    },
+    cancel() {
+      onCancel?.();
+    },
+  });
+}
+
+async function readEvents(stream: ReadableStream<Uint8Array>): Promise<unknown[]> {
+  const text = await new Response(stream).text();
+  return text
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
+describe('createCodeEventStream', () => {
+  it('upstream SSE를 delta와 done NDJSON 이벤트로 변환한다', async () => {
+    const upstream = upstreamOf([
+      encoder.encode(anthropicText('const App = () => null;')),
+      encoder.encode(sse({ type: 'message_stop' })),
+    ]);
+
+    expect(await readEvents(createCodeEventStream(upstream, 'anthropic'))).toEqual([
+      { type: 'delta', code: 'const App = () => null;' },
+      { type: 'done', code: 'const App = () => null;\n\nrender(<App />);' },
+    ]);
+  });
+
+  it('한글 멀티바이트 문자가 청크 경계에서 잘려도 깨지지 않는다', async () => {
+    const bytes = encoder.encode(anthropicText('가'));
+    const split = bytes.indexOf(0xea) + 1; // '가'(EA B0 80)의 첫 바이트 뒤에서 자른다
+    const upstream = upstreamOf([
+      bytes.slice(0, split),
+      bytes.slice(split),
+      encoder.encode(sse({ type: 'message_stop' })),
+    ]);
+
+    const events = (await readEvents(createCodeEventStream(upstream, 'anthropic'))) as Array<{
+      type: string;
+      code?: string;
+    }>;
+
+    expect(events[0]).toEqual({ type: 'delta', code: '가' });
+  });
+
+  it('upstream 읽기가 실패하면 내부 메시지를 숨긴 error 이벤트를 보낸다', async () => {
+    const upstream = new ReadableStream<Uint8Array>({
+      pull() {
+        throw new Error('socket hang up at 10.0.0.1');
+      },
+    });
+
+    expect(await readEvents(createCodeEventStream(upstream, 'anthropic'))).toEqual([
+      { type: 'error', error: '알 수 없는 오류가 발생했습니다. 잠시 후 다시 시도해주세요.' },
+    ]);
+  });
+
+  it('클라이언트가 취소하면 upstream 읽기도 취소한다', async () => {
+    const onCancel = vi.fn();
+    const upstream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(anthropicText('const')));
+      },
+      cancel: onCancel,
+    });
+
+    const reader = createCodeEventStream(upstream, 'anthropic').getReader();
+    await reader.read();
+    await reader.cancel();
+
+    expect(onCancel).toHaveBeenCalledTimes(1);
   });
 });
 

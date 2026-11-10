@@ -65,6 +65,8 @@ export function ComponentCard({
           aria-selected={activeTab === 'preview'}
           className={`tab ${activeTab === 'preview' ? 'tab--active' : ''}`}
           onClick={() => setActiveTab('preview')}
+          // 생성 중에는 불완전한 코드를 매번 트랜스파일하지 않도록 미리보기를 막는다.
+          disabled={isStreaming}
         >
           미리보기
         </button>

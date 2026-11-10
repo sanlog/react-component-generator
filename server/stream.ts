@@ -1,12 +1,13 @@
 // provider 스트리밍 응답(SSE)을 파싱하고 클라이언트용 NDJSON 라인을 만드는 순수 함수들.
 // 부수효과가 없어 단위 테스트가 가능하다.
 import { stripCodeFences, ensureRenderCall } from './generator';
-import { toUserError } from './errors';
-
-const TRUNCATED_MESSAGE = '생성된 코드가 너무 길어 잘렸습니다. 더 간단한 컴포넌트를 요청해주세요.';
-const INTERRUPTED_MESSAGE = '생성이 중단되었습니다. 다른 요청으로 다시 시도해주세요.';
-const CUT_OFF_MESSAGE = '응답이 중간에 끊겼습니다. 다시 시도해주세요.';
-const EMPTY_MESSAGE = '생성된 코드가 비어 있습니다. 다시 시도해주세요.';
+import {
+  CUT_OFF_MESSAGE,
+  EMPTY_MESSAGE,
+  INTERRUPTED_MESSAGE,
+  TRUNCATED_MESSAGE,
+  toUserError,
+} from './errors';
 
 /** SSE 텍스트를 청크 단위로 받아 완성된 이벤트의 data 페이로드만 돌려준다. */
 export function createSSEParser(): { feed: (chunk: string) => string[] } {
@@ -136,6 +137,49 @@ export function createCodeStreamProcessor(provider: 'anthropic' | 'google'): {
       return [{ type: 'done', code: ensureRenderCall(stripCodeFences(text)) }];
     },
   };
+}
+
+/**
+ * upstream SSE 바이트 스트림을 클라이언트용 NDJSON 바이트 스트림으로 변환한다.
+ * 클라이언트가 취소하면 upstream 읽기도 취소해 토큰 소모를 막는다.
+ */
+export function createCodeEventStream(
+  upstream: ReadableStream<Uint8Array>,
+  provider: 'anthropic' | 'google',
+): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const reader = upstream.getReader();
+  let cancelled = false;
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (events: CodeStreamEvent[]) => {
+        for (const event of events) controller.enqueue(encoder.encode(encodeLine(event)));
+      };
+      const processor = createCodeStreamProcessor(provider);
+
+      try {
+        while (!cancelled) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          send(processor.feed(decoder.decode(value, { stream: true })));
+        }
+        if (!cancelled) send(processor.finish());
+      } catch (err) {
+        // upstream 읽기 실패. 클라이언트가 이미 떠났다면 보낼 곳이 없다.
+        if (!cancelled) {
+          send([{ type: 'error', error: toUserError(err instanceof Error ? err.message : '').error }]);
+        }
+      } finally {
+        if (!cancelled) controller.close();
+      }
+    },
+    cancel() {
+      cancelled = true;
+      return reader.cancel();
+    },
+  });
 }
 
 /** 클라이언트로 보낼 이벤트를 NDJSON 한 줄로 직렬화한다. */

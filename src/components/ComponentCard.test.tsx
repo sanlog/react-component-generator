@@ -51,6 +51,14 @@ describe('ComponentCard 탭 전환', () => {
     expect(screen.getByText('const Partial = 1;')).toBeInTheDocument();
   });
 
+  it('스트리밍 중에는 미리보기 탭을 비활성화하고 끝나면 다시 활성화한다', () => {
+    const { rerender } = render(renderCard(true));
+    expect(screen.getByRole('tab', { name: '미리보기' })).toBeDisabled();
+
+    rerender(renderCard(false));
+    expect(screen.getByRole('tab', { name: '미리보기' })).toBeEnabled();
+  });
+
   it('스트리밍이 끝나면 미리보기 탭으로 전환한다', () => {
     const { rerender } = render(renderCard(true));
     rerender(renderCard(false));

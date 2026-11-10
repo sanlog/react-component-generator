@@ -12,7 +12,8 @@ React 19 + Vite 프론트엔드. 프롬프트를 `/api/generate`로 보내고, �
 ## Implementation Patterns
 
 - 서버 통신과 상태는 `hooks/useComponentGenerator.ts`에 모은다. 컴포넌트에서 직접 fetch하지 않는다.
-- 생성은 `/api/generate/stream`(NDJSON)을 `utils/readCodeStream.ts`로 읽는다. 생성 중 코드는 `streamingComponent`로 노출하고 완료 시 같은 id로 `components`에 확정한다. `ComponentCard`는 `isStreaming`이 true인 동안 코드 탭, 끝나면 미리보기 탭으로 전환한다.
+- 생성은 `/api/generate/stream`(NDJSON)을 `utils/readCodeStream.ts`로 읽는다. 생성 중 코드는 `streamingComponent`로 노출하고 완료 시 같은 id로 `components`에 확정한다. `ComponentCard`는 `isStreaming`이 true인 동안 코드 탭으로 고정하고(미리보기 탭 비활성화), 끝나면 미리보기 탭으로 전환한다.
+- 훅은 요청마다 `AbortController`를 만들어 `fetch`에 연결한다. 새 생성이나 언마운트 시 이전 요청을 abort하며, abort는 에러로 표시하지 않고 이전 요청의 정리가 새 요청 상태를 지우지 않게 `abortRef`로 구분한다.
 - 공용 타입은 `types/index.ts`에 둔다.
 - 컴포넌트와 테스트는 같은 디렉토리에 `Name.tsx`, `Name.test.tsx`로 둔다.
 

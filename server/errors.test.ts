@@ -16,7 +16,19 @@ describe('toUserError', () => {
     });
   });
 
-  it('그 외 메시지는 그대로 500으로 반환한다', () => {
-    expect(toUserError('boom')).toEqual({ status: 500, error: 'boom' });
+  it('provider API 에러(상태 코드 포함)는 그대로 500으로 반환한다', () => {
+    expect(toUserError('Claude API error: 401')).toEqual({ status: 500, error: 'Claude API error: 401' });
+  });
+
+  it('서버가 만든 한국어 안내 메시지는 그대로 500으로 반환한다', () => {
+    const message = '생성된 코드가 너무 길어 잘렸습니다. 더 간단한 컴포넌트를 요청해주세요.';
+    expect(toUserError(message)).toEqual({ status: 500, error: message });
+  });
+
+  it('알 수 없는 내부 예외 메시지는 일반 문구로 바꿔 원문을 숨긴다', () => {
+    expect(toUserError('Unexpected token < in JSON at position 0')).toEqual({
+      status: 500,
+      error: '알 수 없는 오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
+    });
   });
 });

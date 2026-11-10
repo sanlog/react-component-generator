@@ -3,6 +3,7 @@
 export async function withModelFallback<T>(
   models: string[],
   attempt: (model: string) => Promise<T>,
+  signal?: AbortSignal,
 ): Promise<T> {
   if (models.length === 0) {
     throw new Error('시도할 모델이 없습니다.');
@@ -14,6 +15,8 @@ export async function withModelFallback<T>(
       return await attempt(model);
     } catch (err) {
       lastError = err;
+      // 클라이언트가 떠났다면 다음 모델을 호출해 토큰을 쓰지 않는다.
+      if (signal?.aborted) break;
     }
   }
   throw lastError;
