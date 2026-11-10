@@ -321,6 +321,26 @@
   color: #6d695e;
 }
 
+.prompt-meta {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.prompt-error {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.prompt-counter {
+  color: var(--lo);
+}
+
+.prompt-textarea[aria-invalid='true'] {
+  outline: 2px solid var(--red);
+}
+
 .loading-spinner {
   display: inline-flex;
   align-items: center;
