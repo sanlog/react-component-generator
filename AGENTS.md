@@ -18,6 +18,7 @@
 - API 키를 응답, 로그, 에러 메시지에 노출하지 않는다. `/api/config`는 키 존재 여부(boolean)만 반환한다 (`server/index.ts:150-153`). 키 값 자체를 클라이언트로 내리는 변경 금지.
 - Google 호출은 API 키가 URL 쿼리에 포함된다 (`server/index.ts:99`). 이 URL이나 fetch 에러 객체를 로깅하거나 응답에 싣지 않는다.
 - `.env`는 커밋 금지 (`.gitignore`). 키는 코드에 하드코딩하지 않는다.
+- 민감 파일(`.env`, `.env.*`, `*credential*`, `*secret*`, `*.pem`, `*.key`, SSH/AWS/gcloud 설정 등)은 읽기·수정·생성을 하지 않는다. `.claude/settings.json`의 `permissions.deny`로 Read/Edit/Write/Bash 접근이 차단되어 있으며, 이 deny 항목을 삭제하거나 완화하지 않는다. 우회(`cat`, `grep`, `printenv` 등 셸 경유, 다른 경로로 복사)도 금지한다. 환경 변수 설정이 필요하면 사용자에게 직접 하도록 안내한다.
 - Vite 프록시 대상 포트와 서버 포트는 3002로 일치해야 한다 (`vite.config.ts:11`, `server/index.ts:139`). 한쪽만 바꾸지 않는다.
 
 ### Do's and Don'ts
